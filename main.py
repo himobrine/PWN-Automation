@@ -2,8 +2,8 @@ from pwn import *
 from LibcSearcher import *
 import os
 
-dir = 'challenge.basectf.fun:23383'
-file = './gift'
+dir = 'challenge.basectf.fun:27271'
+file = './pwn'
 libc_target = ''
 host,port = dir.split(':')
 
@@ -177,10 +177,20 @@ def rop_auto_attack(padding):
     print(shell)
     os.system(shell)
 
-rop_state = False
+def number_hex(number):
+    number_copy = number
+    if type(number) == float:
+        number = int(float(number))
+    if number_copy < 0:
+        number = int(bin(number & 0xffffffff),2)
+    return hex(number)
+
+rop_state = True
 
 if elf_state == True and rop_state == True:
     shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"'
     os.system(shell)
 
 context(os='linux', arch='amd64',log_level = 'debug')
+
+
